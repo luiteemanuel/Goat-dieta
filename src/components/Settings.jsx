@@ -16,10 +16,11 @@ export default function Settings() {
         height: '',
         age: '',
         gender: 'male',
-        basal: '', // Taxa Metabólica Basal
-        tmb: '', // Usaremos este campo para persistir o valor do Basal como meta inicial
+        activityLevel: '1.2', // 1.2=Sedentary, 1.375=Light, 1.55=Mod, 1.725=Very, 1.9=Super
+        goalType: 'maintain', // cut, maintain, bulk
+        basal: '', // Taxa Metabólica Basal (Mifflin)
+        tmb: '', // Meta Calórica (Alvo final)
         proteinMult: '2.0', // 1.4 to 2.0
-        goal: 'maintain', // cut, maintain, bulk
     });
 
     const [macros, setMacros] = useState({
@@ -45,6 +46,28 @@ export default function Settings() {
         loadUserData();
     }, [currentUser]);
 
+    // Recalculate Target (profile.tmb) whenever Basal, Activity, or Goal changes
+    useEffect(() => {
+        if (!profile.basal) return;
+
+        const bmr = parseFloat(profile.basal);
+        const activity = parseFloat(profile.activityLevel);
+
+        // 1. Calculate TDEE
+        const tdee = Math.round(bmr * activity);
+
+        // 2. Apply Goal Modifier
+        let targetCalories = tdee;
+        if (profile.goalType === 'cut') targetCalories -= 500;
+        if (profile.goalType === 'bulk') targetCalories += 300;
+
+        // Update the target (tmb) only if it's different to avoid loops
+        if (parseFloat(profile.tmb) !== targetCalories) {
+            setProfile(prev => ({ ...prev, tmb: targetCalories }));
+        }
+
+    }, [profile.basal, profile.activityLevel, profile.goalType]);
+
     // Auto-calculate macros when profile changes
     useEffect(() => {
         if (!profile.weight || !profile.tmb) return;
@@ -57,10 +80,8 @@ export default function Settings() {
         const proteinGrams = Math.round(weight * proteinMult);
         const proteinCals = proteinGrams * 4;
 
-        // 2. Fat (usually 0.8-1g per kg, let's aim for ~25-30% of TDEE or simple multiplier)
-        // Let's use a standard percentage of TDEE for Fats if not specified, say 30%
-        // Or fixed by weight: 1g per kg
-        const fatGrams = Math.round(weight * 1.0);
+        // 2. Fat (usually 0.8-1g per kg). Adjusted to 0.8 to allow more carbs on a Basal diet.
+        const fatGrams = Math.round(weight * 0.8);
         const fatCals = fatGrams * 9;
 
         // 3. Carbs (Remainder)
@@ -230,18 +251,32 @@ export default function Settings() {
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Nível de Atividade</label>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Nível de Atividade (Fator TDEE)</label>
                             <select
                                 name="activityLevel"
                                 value={profile.activityLevel}
                                 onChange={handleProfileChange}
                                 className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-primary-500 outline-none bg-white"
                             >
-                                <option value="sedentary">Sedentário (Pouco ou nenhum exercício)</option>
-                                <option value="lightly_active">Levemente Ativo (1-3 dias/semana)</option>
-                                <option value="moderately_active">Moderadamente Ativo (3-5 dias/semana)</option>
-                                <option value="very_active">Muito Ativo (6-7 dias/semana)</option>
-                                <option value="super_active">Super Ativo (físico pesado/atleta)</option>
+                                <option value="1.2">Sedentário (x1.2)</option>
+                                <option value="1.375">Levemente Ativo (x1.375)</option>
+                                <option value="1.55">Moderadamente Ativo (x1.55)</option>
+                                <option value="1.725">Muito Ativo (x1.725)</option>
+                                <option value="1.9">Super Ativo (x1.9)</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Objetivo Atual</label>
+                            <select
+                                name="goalType"
+                                value={profile.goalType}
+                                onChange={handleProfileChange}
+                                className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-primary-500 outline-none bg-white"
+                            >
+                                <option value="cut">Emagrecer (-500kcal)</option>
+                                <option value="maintain">Manter Peso (Normocalórica)</option>
+                                <option value="bulk">Ganhar Massa (+300kcal)</option>
                             </select>
                         </div>
 
@@ -253,7 +288,7 @@ export default function Settings() {
                                 className="w-full bg-purple-100 hover:bg-purple-200 text-purple-700 font-medium py-3 rounded-xl transition-all flex items-center justify-center gap-2 border border-purple-200"
                             >
                                 {loading ? <span className="animate-spin">✨</span> : <Sparkles size={18} />}
-                                Calcular Basal & Macros com IA
+                                Calcular Basal com IA
                             </button>
                         </div>
 
